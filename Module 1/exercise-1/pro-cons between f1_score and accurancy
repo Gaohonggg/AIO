@@ -1,4 +1,0 @@
-- F1_core đa phần sử dụng tốt hơn accurancy trong các trường hợp dữ liệu bị mất cân bằng:
-Vì trong các trường hợp dữ liệu mất cân bằng accurancy có thể cho ra số khả quang nhưng thực 
-tế vì dữ liệu bên phía trường hợp tốt xảy ra quá nhiều nên tỉ lệ chia bị gây ảnh hưởng. 
-Còn f1_score sẽ cho ra tỉ lệ của từng trường hợp hên làm cho tỉ lệ trở nên đồng đều hơn.
