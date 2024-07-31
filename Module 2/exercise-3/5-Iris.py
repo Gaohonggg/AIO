@@ -1,64 +1,66 @@
 import pandas as pd
 import numpy as np
 
-def compute_prior(train_data):
-    y_sample = ["setosa","versicolor","virginica"]
-    prior = np.zeros(shape=len(y_sample))
-    for i in range( len(train_data) ):
-        if train_data[i,4] == y_sample[0]:
-            prior[0] += 1
-        elif train_data[i,4] == y_sample[1]:
-            prior[1] += 1
-        else:
-            prior[2] += 1
-    return prior/len(train_data)
-
-def compute_p(train_data):
-    y_sample = ["setosa","versicolor","virginica"]
-    list_name = []
-    p = []
-    for i in range(train_data.shape[1]-1):
-        col_unique = np.unique(train_data[:,i])
-        print(i," ",col_unique )
-        list_name.append( col_unique )
-        temp = []
-        for y in y_sample:
-            l = []
-            for x in col_unique:
-                count_x = np.count_nonzero((train_data[:,i]==x) & (train_data[:,4]==y))
-                count_y = np.count_nonzero(train_data[:,4]==y)
-                l.append(count_x/count_y)
-            temp.extend( [l] )
-        p.extend( [temp] )
-    return p,list_name
-
-def find_index(list_name,id,i):
-    return np.where( list_name[i] == id)[0][0]
-
-def prediction(X,p,listname,prior):
-    y_sample = ["setosa", "versicolor", "virginica"]
-    result = []
-    for i in range(len(y_sample)):
-        temp = 1
-        for j in range(len(X)):
-            pos = find_index(listname,X[j],j)
-            temp = temp * p[j][i][pos]
-        temp = temp*prior[i]
-        result.append( temp )
-    print("The result is: ", y_sample[ result.index( max(result) ) ])
-
-
-df = pd.read_csv("iris.data.txt")
+df = pd.read_csv("iris.data.txt",header=None)
 df.iloc[:,4] = df.iloc[:,4].apply(lambda x: x.replace("Iris-",""))
 train_data = df.to_numpy()
-prior = compute_prior( train_data )
-p,list_name = compute_p(train_data)
-print( p )
+
+def compute_p_A(train_data):
+    set = ["setosa","versicolor","virginica"]
+    p = []
+    for i in set:
+        p.append( np.count_nonzero( train_data[:,4]==i ) )
+    return np.array(p)/len(train_data)
+
+def expect(train_data):
+    result = 0
+    for i in train_data:
+        result += i
+    return result / len(train_data)
+
+def var(train_data,expect):
+    result = 0
+    for i in train_data:
+        result += (i - expect)**2
+    return result / len(train_data)
+
+def compute_e_and_v(train_data):
+    set = ["setosa","versicolor","virginica"]
+    p = []
+    for i in set:
+        l = [[],[]]
+        for j in range(4):
+            temp = train_data[ train_data[:,4]==i,j ]
+            e = expect(temp)
+            v = var(temp,e)
+            l[0].append( e )
+            l[1].append( v )
+        p.extend( [l] )
+    return np.array(p)
+
+def gauss(x,i,j,e_v):
+    k = 1/(np.sqrt(e_v[i,1,j])*np.sqrt(2*3.14))
+    f = (x-e_v[i,0,j])**2 / (2*e_v[i,1,j])
+    return k * np.exp(-f)
+
+def compute(X,p_A,e_v):
+    set = ["setosa", "versicolor", "virginica"]
+    result = []
+    for i in range(len(set)):
+        temp = 1
+        for j in range(len(X)):
+            temp = temp * gauss(X[j],i,j,e_v)
+        result.append( temp*p_A[i] )
+    return set[ result.index( max(result) ) ]
+
+p_A = compute_p_A(train_data)
+print( p_A )
+e_v = compute_e_and_v(train_data)
+print( e_v )
+
 X = [6.3,3.3,6.0,2.5]
-prediction(X,p,list_name,prior)
+print( compute(X,p_A,e_v) )
 X = [5.0,2.0,3.5,1.0]
-prediction(X,p,list_name,prior)
+print( compute(X,p_A,e_v) )
 X = [4.9,3.1,1.5,0.1]
-prediction(X,p,list_name,prior)
-
-
+print( compute(X,p_A,e_v) )
