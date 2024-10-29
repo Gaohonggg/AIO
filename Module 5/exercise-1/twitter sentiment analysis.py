@@ -1,0 +1,163 @@
+import pandas as pd
+import numpy as np
+import re
+import nltk
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from nltk.tokenize import TweetTokenizer
+from collections import defaultdict
+
+df = pd.read_csv("sentiment_analysis.csv", index_col="id")
+
+def preprocessing_data(text):
+    text = re.sub(r'^RT[\s]+',"",text)
+    text = re.sub(r'https?:\/\/.*[\r\n]*',"",text)
+    text = re.sub(r'#',"",text)
+    text = re.sub(r'[^\w\s]',"",text)
+
+    tokenizer = TweetTokenizer(preserve_case=False,
+                               strip_handles=True,
+                               reduce_len=True)
+    test_tokens = tokenizer.tokenize(text)
+    return test_tokens
+
+def get_freq(df):
+    freqs = defaultdict(lambda: 0)
+    for idx, row in df.iterrows():
+        tweet = row["tweet"]
+        label = row["label"]
+
+        tokens = preprocessing_data(tweet)
+        for token in tokens:
+            pair = (token, label)
+            freqs[pair] += 1
+
+    return freqs
+
+def get_feature(text, freqs):
+    tokens = preprocessing_data(text)
+
+    X = np.zeros(3)
+    X[0] = 1
+
+    for token in tokens:
+        X[1] += freqs[(token,0)]
+        X[2] += freqs[(token,1)]
+
+    return X
+
+X = []
+y = []
+
+freqs = get_freq(df)
+for idx, row in df.iterrows():
+    tweet = row["tweet"]
+    label = row["label"]
+    X_i = get_feature(tweet,freqs)
+    X.append(X_i)
+    y.append(label)
+
+X = np.array(X)
+y = np.array(y)
+val_size = 0.2
+test_size = 0.125
+
+X_train, X_val, y_train, y_val = train_test_split(X,y,
+                                                   test_size= val_size,
+                                                   random_state=2,
+                                                   shuffle=True)
+
+X_train, X_test, y_train, y_test = train_test_split(X_train,y_train,
+                                                    test_size=test_size,
+                                                    random_state=2,
+                                                    shuffle=True)
+
+standardScaler = StandardScaler()
+X_train[:,1:] = standardScaler.fit_transform(X_train[:,1:])
+X_val[:,1:] = standardScaler.transform(X_val[:,1:])
+X_test[:,1:] = standardScaler.transform(X_test[:,1:])
+
+def sigmoid(z):
+    return 1/( 1 + np.exp(-z) )
+
+def predict(X,theta):
+    return sigmoid( np.dot(X,theta) )
+
+def compute_loss(y_hat, y):
+    y_hat = np.clip(y_hat,1e-7, 1-1e-7)
+    return ( -y*np.log(y_hat) - (1-y)*np.log(1-y_hat) ).mean()
+
+def compute_gradient(X,y,y_hat):
+    return np.dot( X.T, (y_hat-y) )/y.size
+
+def update_theta(theta, gradient, lr):
+    return theta - lr*gradient
+
+def compute_accuracy(X,y,theta):
+    y_hat = predict(X,theta).round()
+    acc = (y_hat==y).mean()
+    return acc
+
+lr = 0.01
+epochs = 200
+batch_size = 128
+np. random.seed( 2 )
+theta = np.random.uniform(size=X_train.shape[1])
+
+train_accs = []
+train_losses = []
+val_accs = []
+val_losses = []
+for epoch in range(epochs):
+    train_batch_accs = []
+    train_batch_losses = []
+    val_batch_accs = []
+    val_batch_losses = []
+    for i in range(0,X_train.shape[0],batch_size):
+        X_i = X_train[i:i+batch_size,:]
+        y_i = y_train[i:i+batch_size]
+        y_hat = predict(X_i,theta)
+        loss = compute_loss(y_hat,y_i)
+        train_batch_losses.append( loss )
+
+        gradient = compute_gradient(X_i,y_i,y_hat)
+        theta = update_theta(theta,gradient,lr)
+
+        acc = compute_accuracy(X_train,y_train,theta)
+        train_batch_accs.append( acc )
+
+        y_val_hat = predict(X_val,theta)
+        loss = compute_loss(y_val_hat,y_val)
+        val_batch_losses.append(loss)
+        acc = compute_accuracy(X_val,y_val,theta)
+        val_batch_accs.append(acc)
+    train_batch_loss = np.sum( train_batch_losses ) / len( train_batch_losses )
+    train_batch_acc = np.sum( train_batch_accs ) / len( train_batch_accs )
+    val_batch_loss = np.sum( val_batch_losses ) / len( val_batch_losses )
+    val_batch_acc = np.sum( val_batch_accs ) / len( val_batch_accs )
+
+    train_losses.append(train_batch_loss)
+    train_accs.append(train_batch_acc)
+    val_losses.append(val_batch_loss)
+    val_accs.append(val_batch_acc)
+    print(f"\n EPOCH{epoch + 1}:\t Trainingloss: {train_batch_loss: .3f}\t Validationloss: {val_batch_loss: .3f}")
+
+fig, ax = plt.subplots(2,2,figsize=(12,10))
+ax[0 , 0].plot( train_losses )
+ax[0 , 0].set( xlabel="Epoch", ylabel="Loss")
+ax[0 , 0].set_title("Training Loss")
+
+ax[0 , 1].plot( val_losses, "orange")
+ax[0 , 1].set( xlabel="Epoch", ylabel="Loss")
+ax[0 , 1].set_title("Validation Loss")
+
+ax[1 , 0].plot( train_accs )
+ax[1 , 0].set( xlabel ="Epoch", ylabel="Accuracy")
+ax[1 , 0].set_title("Training Accuracy")
+
+ax[1 , 1].plot( val_accs, "orange")
+ax[1 , 1].set( xlabel ="Epoch", ylabel="Accuracy")
+ax[1 , 1].set_title("Validation Accuracy")
+
+plt.show()
