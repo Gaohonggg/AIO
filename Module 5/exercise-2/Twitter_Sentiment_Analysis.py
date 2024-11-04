@@ -1,3 +1,96 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+import re
+import nltk
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_extraction.text import TfidfVectorizer
+from nltk.corpus import stopwords
+from nltk.stem import SnowballStemmer
+
+df = pd.read_csv("Twitter_Data.csv")
+df = df.dropna()
+
+def preprocessing_data(text):
+    text = text.lower()
+    text = re.sub(r'^RT[\s]+',"",text)
+    text = re.sub(r'https?:\/\/.*[\r\n]*',"",text)
+    text = re.sub(r'#',"",text)
+    text = re.sub(r'[^\w\s]',"",text)
+
+    stop_words = set( stopwords.words("english") )
+    words = text.split()
+    words = [token for token in words if token not in stop_words]
+    text = " ".join(words)
+
+    stemmer = SnowballStemmer("english")
+    words = text.split()
+    words = [stemmer.stem(token) for token in words]
+    text = " ".join(words)
+
+    return text
+
+vectorizer = TfidfVectorizer(max_features=2000)
+X = vectorizer.fit_transform(df["clean_text"]).toarray()
+X_b = np.concatenate( (np.ones((X.shape[0],1)),X),axis=1 )
+
+n_classes = df["category"].nunique()
+n_samples = df.shape[0]
+
+y = df["category"].to_numpy() + 1
+y = y.astype(np.uint8 )
+y_encoded = np.array([
+    np.zeros(n_classes) for _ in range(n_samples)
+])
+for i in range(n_samples):
+    y_encoded[i][y[i]] = 1
+
+val_size = 0.2
+test_size = 0.125
+random_state = 2
+
+X_train, X_val, y_train, y_val = train_test_split(X_b,y_encoded,
+                                                  test_size=val_size,
+                                                  random_state=random_state,
+                                                  shuffle=True)
+X_train, X_test, y_train, y_test = train_test_split(X_train,y_train,
+                                                    test_size=test_size,
+                                                    random_state=random_state,
+                                                    shuffle=True)
+
+def softmax(z):
+    return np.exp(z) /( np.sum(np.exp(z),axis=1)[:,None] )
+
+def predict(X, theta):
+    z = np.dot(X, theta)
+    y_hat = softmax(z)
+    return y_hat
+
+def compute_loss(y_hat,y):
+    size = y.size
+    return -np.sum( y*np.log(y_hat) )/size
+
+def compute_gradient(X,y,y_hat):
+    size = y.size
+    return np.dot(X.T,y_hat-y)/size
+
+def update_theta(theta,gradient,lr):
+    return  theta - lr * gradient
+
+def compute_accuracy(X,y,theta):
+    y_hat = predict(X,theta)
+    acc = ( np.argmax(y_hat,axis=1) == np.argmax(y,axis=1) ).mean()
+    return acc
+
+lr = 0.01
+epochs = 200
+batch_size = X_train.shape[0]
+n_features = X_train.shape[1]
+
+np.random.seed(random_state)
+theta = np.random.uniform(size=(n_features,n_classes))
+
 train_accs = []
 train_losses = []
 val_accs = []
